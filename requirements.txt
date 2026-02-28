@@ -1,0 +1,3 @@
+arxiv>=2.1.0
+google-genai>=1.0.0
+pyyaml>=6.0

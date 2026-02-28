@@ -1,0 +1,41 @@
+# ── 搜索配置 ──
+search:
+  categories:
+    - cs.CE           # Computational Engineering
+    - cs.LG           # Machine Learning
+    - cs.NA           # Numerical Analysis
+    - physics.flu-dyn # Fluid Dynamics
+    - physics.comp-ph # Computational Physics
+    - math.NA         # Numerical Analysis
+
+  keywords:
+    - "physics-informed neural network"
+    - "neural operator"
+    - "neural PDE solver"
+    - "Fourier neural operator"
+    - "DeepONet"
+    - "scientific machine learning"
+    - "learned simulation"
+    - "graph neural network simulation"
+    - "differentiable physics"
+    - "data-driven turbulence"
+    - "machine learning CFD"
+    - "neural surrogate model"
+    - "operator learning"
+    - "physics-constrained"
+    - "mesh-free neural"
+    - "PINN"
+    - "domain decomposition neural"
+    - "hybrid solver neural"
+
+  exclude_keywords:
+    - "drug discovery"
+    - "protein folding"
+    - "molecular dynamics"
+
+  max_fetch: 50   # 抓取上限
+  max_digest: 5   # 最终保留篇数
+
+# ── 简报偏好 ──
+digest:
+  language: "中文"  # 中文 | English | 中英混合
