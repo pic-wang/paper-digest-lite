@@ -1,4 +1,4 @@
-# ── 搜索配置 ──
+# ── Search ──
 search:
   categories:
     - cs.CE           # Computational Engineering
@@ -33,9 +33,9 @@ search:
     - "protein folding"
     - "molecular dynamics"
 
-  max_fetch: 50   # 抓取上限
-  max_digest: 5   # 最终保留篇数
+  max_fetch: 50   # max papers to fetch
+  max_digest: 5   # max papers in digest
 
-# ── 简报偏好 ──
+# ── Digest ──
 digest:
-  language: "中文"  # 中文 | English | 中英混合
+  language: "Chinese"  # Chinese | English | mixed

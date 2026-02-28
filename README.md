@@ -1,25 +1,26 @@
 # Paper Digest Agent
 
-每日自动抓取 arXiv 论文 → Gemini 评分+总结 → 邮件发送 HTML 简报。
+A lightweight, single-file agent that delivers a daily arXiv paper digest to your inbox.
+
+**arXiv fetch → Gemini scoring → deep summary → HTML email. One file. Zero infrastructure.**
 
 ```
-config.yaml   ← 改关键词
-main.py       ← 全部逻辑（单文件）
+main.py        ← entire agent (~200 lines)
+config.yaml    ← your keywords
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 获取密钥
+### 1. Get Keys
 
-| 密钥 | 获取方式 |
-|------|----------|
-| `GEMINI_API_KEY` | https://aistudio.google.com → 免费 |
-| `EMAIL_PASSWORD` | Google 账号 → 安全 → 两步验证 → 应用密码 |
+| Secret | How |
+|--------|-----|
+| `GEMINI_API_KEY` | https://aistudio.google.com (free) |
+| `EMAIL_PASSWORD` | Google Account → Security → 2-Step Verification → App Passwords |
 
-### 2. 本地测试
+### 2. Local Test
 
 ```bash
-cd paper-digest-agent
 pip install -r requirements.txt
 
 export GEMINI_API_KEY="xxx"
@@ -27,21 +28,32 @@ export EMAIL_SENDER="you@gmail.com"
 export EMAIL_PASSWORD="xxxx xxxx xxxx xxxx"
 export EMAIL_RECIPIENT="you@gmail.com"
 
-python main.py --dry-run   # 只抓取+评分，不发邮件
-python main.py             # 完整运行
+python main.py --dry-run   # fetch + rank only, no email
+python main.py             # full run
 ```
 
-### 3. 部署到 GitHub Actions
+### 3. Deploy (GitHub Actions)
 
-在 repo **Settings → Secrets → Actions** 添加 4 个 secret：
+Add 4 secrets in **Settings → Secrets → Actions**:
 
-- `GEMINI_API_KEY`
-- `EMAIL_SENDER`
-- `EMAIL_PASSWORD`
-- `EMAIL_RECIPIENT`
+`GEMINI_API_KEY` · `EMAIL_SENDER` · `EMAIL_PASSWORD` · `EMAIL_RECIPIENT`
 
-Push 后每天北京时间 9:00 自动运行。也可在 Actions 页面手动触发。
+Push and it runs daily at 9:00 AM Beijing time. Manual trigger available in Actions tab.
 
-### 4. 自定义关键词
+### 4. Customize
 
-编辑 `config.yaml` 中的 `keywords` 和 `categories`。
+Edit `config.yaml` — change `keywords`, `categories`, or `language`.
+
+## How It Works
+
+```
+arXiv API  ──→  Gemini relevance filter (1-5)  ──→  Gemini deep summary  ──→  HTML email
+ 50 papers         keep score ≥ 3                    top 5 papers              your inbox
+```
+
+## Stack
+
+- **arXiv API** — paper fetching
+- **Gemini 2.0 Flash** — scoring + summarization (free tier, ~10 calls/day)
+- **Gmail SMTP** — email delivery
+- **GitHub Actions** — daily cron

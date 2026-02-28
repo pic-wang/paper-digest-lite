@@ -1,9 +1,9 @@
 """
-Paper Digest Agent — 每日 arXiv 论文简报，单文件实现。
+Paper Digest Agent — single-file daily arXiv paper digest.
 
 Usage:
-    python main.py              # 完整运行，发送邮件
-    python main.py --dry-run    # 只抓取+评分，不发邮件
+    python main.py              # full run, sends email
+    python main.py --dry-run    # fetch + rank only, no email
 """
 
 import argparse
@@ -27,7 +27,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("digest")
 
-# ─── Gemini 配置 ────────────────────────────────────────────────────
+# ─── Gemini ─────────────────────────────────────────────────────────
 MODEL = "gemini-2.0-flash"
 GEMINI_CLIENT = None
 
@@ -40,30 +40,30 @@ def get_gemini():
 
 
 def ask_gemini(prompt: str, retries: int = 3) -> str:
-    """调用 Gemini，自带重试。"""
+    """Call Gemini with automatic retry."""
     for i in range(retries):
         try:
             resp = get_gemini().models.generate_content(model=MODEL, contents=prompt)
             return resp.text
         except Exception as e:
-            log.warning("Gemini 调用失败 (第%d次): %s", i + 1, e)
+            log.warning("Gemini call failed (attempt %d): %s", i + 1, e)
             if i < retries - 1:
                 time.sleep(2 ** (i + 1))
     return ""
 
 
-# ─── Step 1: 抓取 arXiv ────────────────────────────────────────────
+# ─── Step 1: Fetch arXiv papers ─────────────────────────────────────
 def fetch_papers(cfg: dict) -> list[dict]:
     cats = cfg["categories"]
     kws = cfg["keywords"]
     exclude = cfg.get("exclude_keywords", [])
     max_fetch = cfg.get("max_fetch", 50)
 
-    # 周一多抓3天覆盖周末
+    # Fetch 3 days on Monday to cover weekends
     days_back = 3 if datetime.now(timezone.utc).weekday() == 0 else 1
     cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
 
-    # 构建查询: (cat:A OR cat:B) AND (ti/abs:"kw1" OR ...)
+    # Build query: (cat:A OR cat:B) AND (ti/abs:"kw1" OR ...)
     cat_q = " OR ".join(f"cat:{c}" for c in cats)
     kw_q = " OR ".join(f'ti:"{k}" OR abs:"{k}"' for k in kws)
     query = f"({cat_q}) AND ({kw_q})"
@@ -95,25 +95,25 @@ def fetch_papers(cfg: dict) -> list[dict]:
         if len(papers) >= max_fetch:
             break
 
-    log.info("抓取到 %d 篇论文", len(papers))
+    log.info("Fetched %d papers", len(papers))
     return papers
 
 
-# ─── Step 2: LLM 相关性评分 ────────────────────────────────────────
-RANK_PROMPT = """你是 AI for PDE / Physics Simulation 领域的研究助手。
-为每篇论文评估与以下方向的相关性（1-5分）：
-- 神经网络求解 PDE（PINN, Neural Operator, FNO, DeepONet）
-- 物理仿真 ML 加速（learned simulation, surrogate model）
-- 科学计算×深度学习（differentiable physics, hybrid solver）
-- CFD 的 AI 方法
-- 域分解×神经网络
+# ─── Step 2: LLM relevance scoring ──────────────────────────────────
+RANK_PROMPT = """You are a research assistant specializing in AI for PDE / Physics Simulation.
+Rate each paper's relevance (1-5) to these topics:
+- Neural PDE solvers (PINN, Neural Operator, FNO, DeepONet)
+- ML-accelerated physics simulation (learned simulation, surrogate model)
+- Scientific computing x deep learning (differentiable physics, hybrid solver)
+- AI methods for CFD
+- Domain decomposition x neural networks
 
-严格输出 JSON，无其他内容：
+Output strict JSON only:
 ```json
-[{{"id": "...", "score": 5, "reason": "一句话"}}]
+[{{"id": "...", "score": 5, "reason": "one-line reason"}}]
 ```
 
-论文列表：
+Papers:
 {papers}"""
 
 
@@ -124,12 +124,12 @@ def rank_papers(papers: list[dict], max_digest: int = 5) -> list[dict]:
     )
     raw = ask_gemini(RANK_PROMPT.format(papers=text))
     if not raw:
-        log.error("评分失败，保留前 %d 篇", max_digest)
+        log.error("Scoring failed, keeping first %d papers", max_digest)
         for p in papers:
-            p["score"], p["reason"] = 3, "评分失败"
+            p["score"], p["reason"] = 3, "scoring failed"
         return papers[:max_digest]
 
-    # 解析 JSON
+    # Parse JSON
     try:
         cleaned = raw.strip()
         if "```json" in cleaned:
@@ -138,9 +138,9 @@ def rank_papers(papers: list[dict], max_digest: int = 5) -> list[dict]:
             cleaned = cleaned.split("```", 1)[0]
         scores = {s["id"]: s for s in json.loads(cleaned)}
     except (json.JSONDecodeError, KeyError):
-        log.error("JSON 解析失败，保留前 %d 篇", max_digest)
+        log.error("JSON parse failed, keeping first %d papers", max_digest)
         for p in papers:
-            p["score"], p["reason"] = 3, "解析失败"
+            p["score"], p["reason"] = 3, "parse failed"
         return papers[:max_digest]
 
     for p in papers:
@@ -153,85 +153,85 @@ def rank_papers(papers: list[dict], max_digest: int = 5) -> list[dict]:
         key=lambda x: x["score"],
         reverse=True,
     )
-    log.info("评分完成：%d/%d 篇通过阈值", len(result), len(papers))
+    log.info("Scoring done: %d/%d papers passed threshold", len(result), len(papers))
     return result[:max_digest]
 
 
-# ─── Step 3: 逐篇总结 ──────────────────────────────────────────────
-SUMMARY_PROMPT = """你是 AI for PDE / Scientific Computing 高级研究员。
-用{lang}深度总结这篇论文，按以下结构输出 Markdown：
+# ─── Step 3: Summarize each paper ───────────────────────────────────
+SUMMARY_PROMPT = """You are a senior researcher in AI for PDE / Scientific Computing.
+Provide a deep summary of this paper in {lang}, using this Markdown structure:
 
-🎯 一句话总结
-🔬 核心方法（3-5句，说清输入/输出、创新点、与 PINN/FNO 等的区别）
-📊 主要结果（benchmark、关键指标、与 baseline 对比）
-💡 亮点与局限（各 1-2 点）
-🔗 与 Urban Wind / CFD 研究的关联（无则说"关联较弱"）
+### One-line Summary
+### Core Method (3-5 sentences: input/output, innovation, difference from PINN/FNO)
+### Key Results (benchmarks, metrics, comparison with baselines)
+### Highlights & Limitations (1-2 each)
+### Relevance to Urban Wind / CFD (if none, say "weak relevance")
 
-论文：
-- 标题：{title}
-- 作者：{authors}
-- 摘要：{abstract}
-- arXiv ID：{id}"""
+Paper:
+- Title: {title}
+- Authors: {authors}
+- Abstract: {abstract}
+- arXiv ID: {id}"""
 
 
-def summarize_papers(papers: list[dict], lang: str = "中文") -> list[str]:
+def summarize_papers(papers: list[dict], lang: str = "Chinese") -> list[str]:
     summaries = []
     for i, p in enumerate(papers):
         if i > 0:
-            time.sleep(4)  # 15 RPM 限制
-        log.info("总结 %d/%d: %s", i + 1, len(papers), p["title"][:50])
+            time.sleep(4)  # respect 15 RPM limit
+        log.info("Summarizing %d/%d: %s", i + 1, len(papers), p["title"][:50])
         s = ask_gemini(SUMMARY_PROMPT.format(lang=lang, **p))
-        summaries.append(s or f"**{p['title']}**\n\n{p['abstract']}\n\n*（总结失败）*")
+        summaries.append(s or f"**{p['title']}**\n\n{p['abstract']}\n\n*(summary failed)*")
     return summaries
 
 
-# ─── Step 4: 组装 HTML 简报 ────────────────────────────────────────
-COMPOSE_PROMPT = """你是 AI for Science 日报编辑。将以下论文总结整合为 HTML 邮件简报。
+# ─── Step 4: Compose HTML digest ────────────────────────────────────
+COMPOSE_PROMPT = """You are an AI for Science newsletter editor. Compose an HTML email digest from these paper summaries.
 
-要求：
-- 语言：{lang}，日期：{date}
-- 开头 2-3 句概述今日主题
-- 按相关性从高到低排列，每篇附 arXiv 链接
-- 末尾附 "📌 今日最值得精读" 推荐 1 篇
-- 输出纯 HTML，用 inline CSS，适配邮件客户端
-- 风格简洁专业，排版美观
+Requirements:
+- Language: {lang}, Date: {date}
+- Open with 2-3 sentences summarizing today's themes
+- Rank by relevance score (high to low), include arXiv links
+- End with a "Must-Read Pick" recommending 1 paper with reason
+- Output pure HTML with inline CSS, email-client compatible
+- Clean, professional layout
 
-论文总结：
+Paper summaries:
 {summaries}"""
 
 
 def compose_digest(papers, summaries, lang, date) -> str:
     combined = "\n\n---\n\n".join(
-        f"## [{p['title']}]({p['url']})\n相关性：{p['score']}分 — {p['reason']}\n\n{s}"
+        f"## [{p['title']}]({p['url']})\nRelevance: {p['score']}/5 — {p['reason']}\n\n{s}"
         for p, s in zip(papers, summaries)
     )
     html = ask_gemini(COMPOSE_PROMPT.format(lang=lang, date=date, summaries=combined))
 
     if html:
-        # 去掉 Gemini 可能加的 markdown 代码围栏
+        # Strip markdown code fences if present
         if "```html" in html:
             html = html.split("```html", 1)[1]
         if "```" in html:
             html = html.rsplit("```", 1)[0]
         return html.strip()
 
-    # Fallback：简易 HTML
-    log.warning("HTML 生成失败，使用 fallback")
+    # Fallback: simple HTML
+    log.warning("HTML generation failed, using fallback")
     cards = "".join(
         f'<div style="margin:16px 0;padding:16px;border:1px solid #ddd;border-radius:8px;">'
         f'<h3><a href="{p["url"]}" style="color:#1a73e8">{p["title"]}</a></h3>'
-        f'<p style="color:#666;font-size:13px">评分：{p["score"]} — {p["reason"]}</p>'
+        f'<p style="color:#666;font-size:13px">Score: {p["score"]}/5 — {p["reason"]}</p>'
         f'<div style="white-space:pre-wrap;font-size:14px">{s}</div></div>'
         for p, s in zip(papers, summaries)
     )
     return (
         f'<html><body style="font-family:sans-serif;max-width:700px;margin:auto;padding:20px">'
-        f'<h1>📑 AI4PDE 论文日报 — {date}</h1>{cards}'
+        f'<h1>AI4PDE Paper Digest — {date}</h1>{cards}'
         f'<hr><p style="color:#999;font-size:12px">Paper Digest Agent</p></body></html>'
     )
 
 
-# ─── Step 5: 发送邮件 ──────────────────────────────────────────────
+# ─── Step 5: Send email ─────────────────────────────────────────────
 def send_email(subject: str, body: str, html: bool = False):
     sender = os.environ["EMAIL_SENDER"]
     password = os.environ["EMAIL_PASSWORD"]
@@ -247,50 +247,50 @@ def send_email(subject: str, body: str, html: bool = False):
         s.starttls()
         s.login(sender, password)
         s.sendmail(sender, [recipient], msg.as_string())
-    log.info("邮件已发送 → %s", recipient)
+    log.info("Email sent to %s", recipient)
 
 
-# ─── 主流程 ─────────────────────────────────────────────────────────
+# ─── Main pipeline ──────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Paper Digest Agent")
-    parser.add_argument("--dry-run", action="store_true", help="只抓取+评分，不发邮件")
+    parser.add_argument("--dry-run", action="store_true", help="fetch + rank only, no email")
     parser.add_argument("--config", default="config.yaml")
     args = parser.parse_args()
 
     cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
     search = cfg["search"]
     digest = cfg.get("digest", {})
-    lang = digest.get("language", "中文")
+    lang = digest.get("language", "Chinese")
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # 1. 抓取
+    # 1. Fetch
     papers = fetch_papers(search)
     if not papers:
         if not args.dry_run:
-            send_email(f"📭 AI4PDE 日报 — {today}", "今天没有检索到相关论文。")
-        return log.info("无论文，结束")
+            send_email(f"AI4PDE Digest — {today}", "No relevant papers found today.")
+        return log.info("No papers found")
 
-    # 2. 评分
+    # 2. Rank
     top = rank_papers(papers, search.get("max_digest", 5))
     if not top:
         if not args.dry_run:
-            send_email(f"📭 AI4PDE 日报 — {today}", "检索到论文但相关性不高。")
-        return log.info("无高相关论文，结束")
+            send_email(f"AI4PDE Digest — {today}", "Papers found but none scored high enough.")
+        return log.info("No high-relevance papers")
 
     if args.dry_run:
         for p in top:
-            log.info("  [%d分] %s — %s", p["score"], p["id"], p["title"][:60])
+            log.info("  [%d] %s — %s", p["score"], p["id"], p["title"][:60])
         return
 
-    # 3. 总结
+    # 3. Summarize
     summaries = summarize_papers(top, lang)
 
-    # 4. 组装 HTML
+    # 4. Compose HTML
     html = compose_digest(top, summaries, lang, today)
 
-    # 5. 发送
-    send_email(f"📑 AI4PDE 论文日报 — {today} ({len(top)}篇)", html, html=True)
-    log.info("完成！已发送 %d 篇论文简报", len(top))
+    # 5. Send
+    send_email(f"AI4PDE Paper Digest — {today} ({len(top)} papers)", html, html=True)
+    log.info("Done! Sent digest with %d papers", len(top))
 
 
 if __name__ == "__main__":

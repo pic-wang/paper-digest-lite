@@ -2,9 +2,9 @@ name: Daily Paper Digest
 
 on:
   schedule:
-    # 每天 UTC 1:00 = 北京时间 9:00
+    # UTC 1:00 = Beijing 9:00 AM
     - cron: '0 1 * * *'
-  workflow_dispatch: # 允许手动触发测试
+  workflow_dispatch: # manual trigger
 
 jobs:
   digest:
